@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: ai-service
+    env: python
+    plan: free
+    buildCommand: "cd ai-service && pip install -r requirements.txt"
+    startCommand: "cd ai-service && uvicorn app:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GIT_HUB_TOKEN
+        sync: false
+
+  - type: static
+    name: frontend
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://ai-service.onrender.com

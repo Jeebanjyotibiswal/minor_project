@@ -1,0 +1,145 @@
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+.page-home .hero-card,
+.page-analyzer .panel {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 2rem;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.12);
+}
+
+.hero-card h2,
+.panel h2 {
+  margin-top: 0;
+}
+
+.button-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.button-row button,
+.search-form button,
+.file-form button,
+.path-form button,
+.secondary {
+  min-width: 170px;
+}
+
+.search-form,
+.file-form,
+.path-form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.5rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+input[type='text'],
+input[type='file'] {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+}
+
+.status {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 12px;
+}
+
+.status.error {
+  background: rgba(255, 66, 66, 0.12);
+  border: 1px solid rgba(255, 66, 66, 0.3);
+}
+
+.result-grid {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.result-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1.25rem;
+  text-align: left;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.repo-summary,
+.repo-review {
+  padding: 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  margin-bottom: 1rem;
+}
+
+.repo-summary h4,
+.repo-review h4 {
+  margin-bottom: 0.5rem;
+}
+
+.repo-review pre {
+  white-space: pre-wrap;
+  overflow-x: auto;
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.divider {
+  margin: 1.5rem 0;
+  text-align: center;
+  font-size: 0.9rem;
+  letter-spacing: 0.15em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.review-card {
+  margin-top: 1.5rem;
+}
+
+.review-grid {
+  display: grid;
+  gap: 1.1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.review-grid ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0.5rem 0 0;
+}
+
+.secondary {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: inherit;
+  padding: 0.8rem 1rem;
+}
+
+.secondary:hover {
+  border-color: rgba(100, 111, 255, 0.75);
+}
