@@ -1,5 +1,6 @@
 from typing import Optional, TypedDict
 import json
+import logging
 import os
 import tempfile
 from base64 import b64decode
@@ -10,6 +11,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 try:
     from groq import Groq
@@ -22,10 +25,11 @@ except ImportError:
     ChatGroq = None
 
 try:
-    from github import Github, Auth
+    from github import Github, Auth, GithubException
 except ImportError:
     Github = None
     Auth = None
+    GithubException = None
 
 # Load environment variables from current file folder and CWD
 env_path = Path(__file__).resolve().parent / ".env"
@@ -48,8 +52,8 @@ def get_chat_model():
     if model is None and ChatGroq is not None and key:
         try:
             model = ChatGroq(api_key=key, model=DEFAULT_GROQ_MODEL, temperature=0.7)
-        except Exception as exc:
-            print(f"ChatGroq init failed: {exc}")
+        except Exception:
+            logger.exception("ChatGroq initialization failed")
             model = None
     return model
 
@@ -61,8 +65,8 @@ def get_github_client():
     if token and Auth is not None and token.strip():
         try:
             return Github(auth=Auth.Token(token.strip()), retry=0, timeout=10)
-        except Exception as exc:
-            print(f"GitHub token auth failed: {exc}")
+        except Exception:
+            logger.exception("GitHub token authentication initialization failed; falling back to anonymous access")
     return Github(retry=0, timeout=10)
 
 github = get_github_client()
@@ -159,14 +163,24 @@ def fetch_profile(state):
             "blog": user.blog or "N/A",
         }
         return state
-    except Exception as exc:
+    except GithubException as exc:
         err_msg = str(exc)
-        if "403" in err_msg or "rate limit" in err_msg.lower():
+        if exc.status == 403 or "rate limit" in err_msg.lower():
             raise HTTPException(
                 status_code=429,
                 detail="GitHub API rate limit reached for anonymous IP. Please add your GIT_HUB_TOKEN in minor_project/ai-service/.env to get 5,000 requests/hour."
             ) from exc
-        raise HTTPException(status_code=404, detail=f"GitHub user '{state['username']}' not found.") from exc
+        if exc.status == 401:
+            raise HTTPException(
+                status_code=401,
+                detail="GitHub authentication failed. The configured GIT_HUB_TOKEN is invalid, expired, or revoked. Update it or remove it to use anonymous access."
+            ) from exc
+        if exc.status == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=f"GitHub user '{state['username']}' was not found. Enter the exact GitHub username (login), not the profile display name."
+            ) from exc
+        raise
 
 
 def fetch_repositories(state):
@@ -358,7 +372,7 @@ Do not use markdown tables.
             response = chat_model.invoke(prompt)
             reports.append({"name": repo["name"], "ai_review": response.content})
         except Exception as exc:
-            print(f"AI review error for {repo['name']}: {exc}")
+            logger.exception("AI repository review failed for %s", repo["name"])
             reports.append({"name": repo["name"], "ai_review": f"Review unavailable: {exc}"})
     state["repository_reports"] = reports
     return state
@@ -483,32 +497,42 @@ def calculate_github_score(profile: dict, repo_analysis: list, commit_data: list
 
 
 def run_github_analysis(username: str):
-    client = get_github_client()
-    if client is None:
-        raise HTTPException(status_code=500, detail="GitHub analyzer is not configured. PyGithub is not installed.")
-    state = {
-        "username": username,
-        "profile": {},
-        "repositories": [],
-        "repo_analysis": [],
-        "readme_data": [],
-        "commit_data": [],
-        "issue_data": [],
-        "pr_data": [],
-        "repository_reports": [],
-    }
+    stage = "get_github_client"
     try:
-        state = fetch_profile(state)
-        state = fetch_repositories(state)
-        state = analyze_repositories(state)
-        state = fetch_readme(state)
-        state = fetch_commits(state)
-        state = fetch_issues(state)
-        state = fetch_prs(state)
-        state = ai_repository_review(state)
-    except HTTPException:
+        client = get_github_client()
+        if client is None:
+            raise HTTPException(status_code=500, detail="GitHub analyzer is not configured. PyGithub is not installed.")
+        state = {
+            "username": username,
+            "profile": {},
+            "repositories": [],
+            "repo_analysis": [],
+            "readme_data": [],
+            "commit_data": [],
+            "issue_data": [],
+            "pr_data": [],
+            "repository_reports": [],
+        }
+        for stage, analyzer in (
+            ("fetch_profile", fetch_profile),
+            ("fetch_repositories", fetch_repositories),
+            ("analyze_repositories", analyze_repositories),
+            ("fetch_readme", fetch_readme),
+            ("fetch_commits", fetch_commits),
+            ("fetch_issues", fetch_issues),
+            ("fetch_prs", fetch_prs),
+            ("ai_repository_review", ai_repository_review),
+        ):
+            state = analyzer(state)
+        stage = "identify_strongest_repo"
+        strongest = identify_strongest_repo(state["repo_analysis"])
+        stage = "calculate_github_score"
+        github_score = calculate_github_score(state["profile"], state["repo_analysis"], state["commit_data"])
+    except HTTPException as exc:
+        logger.warning("GitHub analysis failed during %s with HTTP %s", stage, exc.status_code)
         raise
     except Exception as exc:
+        logger.exception("GitHub analysis failed during %s", stage)
         err_msg = str(exc)
         if "403" in err_msg or "rate limit" in err_msg.lower():
             raise HTTPException(
@@ -517,8 +541,6 @@ def run_github_analysis(username: str):
             ) from exc
         raise HTTPException(status_code=500, detail=f"GitHub analysis error: {err_msg}") from exc
 
-    strongest = identify_strongest_repo(state["repo_analysis"])
-    github_score = calculate_github_score(state["profile"], state["repo_analysis"], state["commit_data"])
     return {
         "profile": state["profile"],
         "github_score": github_score,
@@ -585,11 +607,11 @@ def analyze_resume_file(pdf_path: str):
     if path.suffix.lower() != ".pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-    docs = fitz.open(str(path))
-    text = ""
-    for page in docs:
-        text += page.get_text()
-    docs.close()
+    try:
+        with fitz.open(str(path)) as docs:
+            text = "".join(page.get_text() for page in docs)
+    except fitz.FileDataError as exc:
+        raise HTTPException(status_code=400, detail="Uploaded file is not a valid or readable PDF.") from exc
 
     prompt = f"""
 You are an ATS Resume Reviewer.
